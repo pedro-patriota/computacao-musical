@@ -5,6 +5,8 @@ from pathlib import Path
 from musicai_sdk import MusicAiClient
 from main import process_audio_with_music_ai
 from chrodsSync import sync_lyrics_with_chords, load_json_files, save_synced_output
+import streamlit.components.v1 as components
+import html as html_lib
 
 # Set page config
 st.set_page_config(
@@ -40,34 +42,242 @@ def find_latest_json_files(output_dir):
 
 
 def display_synced_lyrics(synced_data):
-    """Display lyrics with chord buttons on black background."""
+    import html as html_lib
+    import json
+    import streamlit.components.v1 as components
+
     if not synced_data:
         return
-    
-    # Build HTML for display with black background and white text
-    display_html = '<div style="background-color: #000000; padding: 40px; border-radius: 10px; font-size: 20px; line-height: 2; color: #ffffff; font-family: \'Courier New\', monospace; position: relative;">'
-    
-    for item in synced_data:
-        word = item['word']
-        has_chord = item['has_chord']
-        
-        if has_chord:
-            # Extract chord from word (format: word{CHORD})
-            if '{' in word and '}' in word:
-                chord_start_idx = word.rfind('{')
-                chord_end_idx = word.rfind('}')
-                chord = word[chord_start_idx+1:chord_end_idx]
-                word_text = word[:chord_start_idx] + word[chord_end_idx+1:]
-                
-                display_html += f'<span style="position: relative; display: inline-block; margin-right: 8px;"><span style="display: inline-block; position: relative; padding-top: 35px;"><span style="position: absolute; top: 0; left: 0; background: linear-gradient(135deg, #87CEEB 0%, #4A90E2 100%); color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; box-shadow: 0 2px 8px rgba(0,0,0,0.4); white-space: nowrap;">{chord}</span><span style="color: #ffffff;">{word_text}</span></span></span>'
-            else:
-                display_html += f'<span style="color: #ffffff; margin-right: 8px;">{word}</span>'
+
+    container_id = "lyrics_container"
+    overlay_id = "chord_overlay"
+
+    flowing_html = []
+    chord_buttons = []
+
+    for i, item in enumerate(synced_data):
+        word = item.get("word", "")
+        has_chord = item.get("has_chord", False)
+
+        # chord duration extraction
+        duration = 0.4
+        if "start" in item and "end" in item:
+            duration = max(0.15, item["end"] - item["start"])
+
+        if has_chord and "{" in word and "}" in word:
+            chord_start = word.rfind("{")
+            chord_end = word.rfind("}")
+            chord = word[chord_start+1:chord_end]
+            word_text = word[:chord_start] + word[chord_end+1:]
+
+            flowing_html.append(
+                f'<span id="word-{i}" style="white-space: pre-wrap;">{html_lib.escape(word_text)}</span>'
+            )
+
+            chord_buttons.append({
+                "index": i,
+                "chord": chord,
+                "duration": duration
+            })
         else:
-            display_html += f'<span style="color: #ffffff; margin-right: 8px;">{word}</span>'
-    
-    display_html += '</div>'
-    
-    st.markdown(display_html, unsafe_allow_html=True)
+            flowing_html.append(
+                f'<span style="white-space: pre-wrap;">{html_lib.escape(word)}</span>'
+            )
+
+    flowing_html_str = " ".join(flowing_html)
+
+    html = f"""
+    <div id="{container_id}" style="
+        position: relative;
+        background-color: #000;
+        color: #fff;
+        padding: 28px;
+        border-radius: 10px;
+        font-family: 'Courier New', monospace;
+        font-size: 20px;
+        line-height: 3;
+        overflow: auto;
+        max-height: 420px;
+    ">
+        <div id="lyrics_flow" style="position: relative; z-index: 1;">
+            {flowing_html_str}
+        </div>
+
+        <div id="{overlay_id}" style="
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;">
+        </div>
+    </div>
+
+    <script>
+    (function() {{
+        const chordSpecs = {json.dumps(chord_buttons)};
+        const container = document.getElementById("{container_id}");
+        const overlay = document.getElementById("{overlay_id}");
+
+        // Create buttons
+        chordSpecs.forEach(spec => {{
+            const btn = document.createElement("button");
+            btn.className = "chord-btn";
+            btn.dataset.index = spec.index;
+            btn.dataset.chord = spec.chord;
+            btn.dataset.duration = spec.duration;
+            btn.innerText = spec.chord;
+
+            Object.assign(btn.style, {{
+                position: "absolute",
+                pointerEvents: "auto",
+                transform: "translateX(-50%)",
+                padding: "6px 10px",
+                borderRadius: "6px",
+                border: "none",
+                fontSize: "12px",
+                fontWeight: "700",
+                cursor: "pointer",
+                background: "linear-gradient(135deg, #FFD27F 0%, #FF9D3F 100%)",
+                color: "white",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.4)"
+            }});
+
+            overlay.appendChild(btn);
+        }});
+
+        // Audio
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioCtx();
+
+        function playChord(chordName, duration) {{
+
+            const baseFreqs = {{
+              "C": 261.63, "C#": 277.18, "Db": 277.18,
+              "D": 293.66, "D#": 311.13, "Eb": 311.13,
+              "E": 329.63,
+              "F": 349.23, "F#": 369.99, "Gb": 369.99,
+              "G": 392.00, "G#": 415.30, "Ab": 415.30,
+              "A": 440.00, "A#": 466.16, "Bb": 466.16,
+              "B": 493.88
+            }};
+
+            const root = chordName.split(":")[0];
+            const base = baseFreqs[root] || 440;
+
+            const isMinor = /m(?!a)/i.test(chordName);
+            const third = isMinor ? base * Math.pow(2, 3/12) 
+                                  : base * Math.pow(2, 4/12);
+            const fifth = base * Math.pow(2, 7/12);
+
+            const freqs = [base, third, fifth];
+            const now = audioCtx.currentTime;
+
+            // Musical ADSR with real duration
+            const attack = 0.03;
+            const decay = 0.12;
+            const release = 0.40;
+
+            let sustainTime = Math.max(0.01, duration - attack - decay - release);
+            const sustainLevel = 0.45;
+
+            freqs.forEach(freq => {{
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const osc3 = audioCtx.createOscillator();
+
+                const gain = audioCtx.createGain();
+
+                osc1.type = "sine";
+                osc1.frequency.value = freq;
+
+                osc2.type = "triangle";
+                osc2.frequency.value = freq * 1.004; // unison detune
+
+                osc3.type = "sine";
+                osc3.frequency.value = freq * 2; // overtone
+
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.linearRampToValueAtTime(0.8, now + attack);
+                gain.gain.linearRampToValueAtTime(sustainLevel, now + attack + decay);
+
+                gain.gain.setValueAtTime(sustainLevel, now + attack + decay + sustainTime);
+
+                gain.gain.exponentialRampToValueAtTime(
+                    0.0001,
+                    now + attack + decay + sustainTime + release
+                );
+
+                osc1.connect(gain);
+                osc2.connect(gain);
+                osc3.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                const totalTime = attack + decay + sustainTime + release;
+                osc1.start(now);
+                osc2.start(now);
+                osc3.start(now);
+                osc1.stop(now + totalTime);
+                osc2.stop(now + totalTime);
+                osc3.stop(now + totalTime);
+            }});
+        }}
+
+        overlay.addEventListener("click", ev => {{
+            const el = ev.target;
+            if (el && el.classList.contains("chord-btn")) {{
+                if (audioCtx.state === "suspended") audioCtx.resume();
+                playChord(el.dataset.chord, parseFloat(el.dataset.duration));
+            }}
+        }});
+
+        function positionButtons() {{
+            const containerRect = container.getBoundingClientRect();
+
+            chordSpecs.forEach(spec => {{
+                const wordSpan = document.getElementById("word-" + spec.index);
+                const btn = overlay.querySelector('button[data-index="' + spec.index + '"]');
+
+                if (!wordSpan || !btn) return;
+
+                const spanRect = wordSpan.getBoundingClientRect();
+
+                const centerX =
+                    spanRect.left - containerRect.left +
+                    (spanRect.width / 2) +
+                    container.scrollLeft;
+
+                const topY =
+                    spanRect.top - containerRect.top +
+                    container.scrollTop - 10;
+
+                btn.style.left = centerX + "px";
+                btn.style.top = (topY - 26) + "px";
+            }});
+        }}
+
+        function safeReposition() {{
+            requestAnimationFrame(() => requestAnimationFrame(positionButtons));
+        }}
+
+        window.addEventListener("load", safeReposition);
+        container.addEventListener("scroll", positionButtons);
+        window.addEventListener("resize", safeReposition);
+
+        const ro = new MutationObserver(safeReposition);
+        ro.observe(document.getElementById("lyrics_flow"), {{
+            childList: true,
+            subtree: true,
+            characterData: true
+        }});
+
+        safeReposition();
+    }})();
+    </script>
+    """
+
+    components.html(html, height=450, scrolling=True)
+
 
 
 # Main Single Page Layout
