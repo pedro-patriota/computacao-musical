@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lyrics & Chords Sync</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #0f172a;
+      --panel-2: #111827;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --border: #1f2937;
+      --brand-a: #8b5cf6;
+      --brand-b: #06b6d4;
+      --accent: #22d3ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 0% -10%, rgba(34,211,238,0.08), transparent 60%),
+        radial-gradient(1000px 600px at 100% 0%, rgba(139,92,246,0.10), transparent 60%),
+        var(--bg);
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.2;
+      background: linear-gradient(90deg, var(--brand-a), var(--brand-b));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: 0.2px;
+    }
+    .card {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)),
+        var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin: 0 auto 16px;
+      max-width: 1080px;
+      box-shadow: 0 12px 28px rgba(2,6,23,0.5);
+    }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    label { font-size:13px; color:var(--muted); }
+    input[type="file"], input[type="text"] {
+      color: var(--text);
+      background: #0b1324;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    input[type="text"] { width: 100%; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(34,211,238,0.15); }
+    button {
+      background: linear-gradient(135deg, var(--brand-a), var(--brand-b));
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(34,211,238,0.25);
+      transition: transform .08s ease, filter .15s ease, box-shadow .15s ease;
+    }
+    button:hover { filter: brightness(1.05); box-shadow: 0 10px 26px rgba(34,211,238,0.28); }
+    button:active { transform: translateY(1px); }
+    button.secondary {
+      background: #1f2a44;
+      color: #dbeafe;
+      box-shadow: none;
+    }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    .out {
+      white-space: pre-wrap;
+      background: #0b1324;
+      border: 1px solid var(--border);
+      padding: 12px;
+      border-radius: 10px;
+      min-height: 140px;
+      max-height: 340px;
+      overflow: auto;
+    }
+    .muted { color: var(--muted); font-size: 13px; }
+    .split { display:grid; grid-template-columns: 1fr; gap:12px; }
+    @media (min-width: 980px) { .split { grid-template-columns: 1fr 1fr; } }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 14px; }
+    .small { font-size: 12px; }
+    .footer { color:#7a8aa1; font-size: 12px; text-align:center; margin-top:16px; }
+    .title { font-weight: 700; letter-spacing: .2px; }
+    .badge { display:inline-block; padding:4px 8px; border:1px solid var(--border); border-radius:999px; color:#cbd5e1; font-size:12px; background:#0b1324; }
+  </style>
+  <script src="./script.js" defer></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" style="padding:24px 20px;">
+      <h1>Lyrics & Chords Sync</h1>
+      <div class="muted small">Upload lyrics.json and chords.json to sync, or try the demo.</div>
+    </div>
+
+    <div class="card">
+      <div class="title">Backend Settings <span class="badge">API</span></div>
+      <div class="row" style="margin-top:8px; align-items: flex-end;">
+      <div style="flex:1; min-width: 280px;">
+        <label for="apiBase">Backend API URL</label><br />
+        <input id="apiBase" type="text" placeholder="http://localhost:8000" />
+      </div>
+      <div>
+        <button id="saveApiBase" class="secondary">Save</button>
+      </div>
+      </div>
+      <div class="muted small">Endpoints expected at: GET /demo-sync, POST /sync</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+      <div>
+        <div class="title">Quick Demo</div>
+        <div class="muted small">Uses sample files on the backend</div>
+      </div>
+      <div>
+        <button id="demoBtn">Load Demo Result</button>
+      </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">Upload JSON</div>
+      <div class="muted small">Both files must be valid JSON in the expected format</div>
+      <form id="syncForm">
+        <div class="row" style="margin-top:8px;">
+        <div>
+          <label for="lyricsFile">Lyrics JSON</label><br />
+          <input id="lyricsFile" name="lyrics_file" type="file" accept="application/json" required />
+        </div>
+        <div>
+          <label for="chordsFile">Chords JSON</label><br />
+          <input id="chordsFile" name="chords_file" type="file" accept="application/json" required />
+        </div>
+        <div style="align-self:flex-end;">
+          <button id="syncBtn" type="submit">Sync</button>
+        </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card split">
+      <div>
+        <div class="title">Synced Text</div>
+        <div id="syncedText" class="out mono"></div>
+      </div>
+      <div>
+        <div class="title">Raw JSON</div>
+        <div id="syncedJson" class="out mono small"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="status" class="muted small"></div>
+    </div>
+
+    <div class="footer">Backend endpoints: GET /demo-sync · POST /sync</div>
+  </div>
+</body>
+</html>
