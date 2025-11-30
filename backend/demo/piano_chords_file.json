@@ -1,0 +1,22 @@
+[
+  {
+    "start": 91.29,
+    "end": 187.73,
+    "start_bar": 0,
+    "start_beat": 4,
+    "end_bar": 38,
+    "end_beat": 2,
+    "chord_majmin": "N",
+    "bass": null,
+    "bass_nashville": null,
+    "chord_complex_jazz": "N",
+    "chord_simple_jazz": "N",
+    "chord_basic_jazz": "N",
+    "chord_complex_pop": "N",
+    "chord_simple_pop": "N",
+    "chord_basic_pop": "N",
+    "chord_complex_nashville": "N",
+    "chord_simple_nashville": "N",
+    "chord_basic_nashville": "N"
+  }
+]
