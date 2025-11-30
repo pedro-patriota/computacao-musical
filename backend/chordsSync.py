@@ -55,56 +55,47 @@ def sync_lyrics_with_chords(lyrics_data, chords_data, verbose=True):
         # Track which chords have been inserted to avoid duplicates
         inserted_chords = set()
         
-        # Build the synced text
+        # Build the synced text with better chord placement
         synced_result = []
+        chord_index = 0
         
         for word_idx, word_info in enumerate(words_with_times):
             word = word_info['word']
             word_start = word_info['start']
             word_end = word_info['end']
-            word_duration = word_end - word_start
             
-            # Find chords that overlap with this word and haven't been inserted yet
-            word_chords = []
-            for chord_idx, chord_info in enumerate(chords_with_times):
+            # Check if there's a chord that should be placed before this word
+            chord_to_place = None
+            
+            # Look for the next chord that starts close to or before this word
+            while chord_index < len(chords_with_times):
+                chord_info = chords_with_times[chord_index]
                 chord_start = chord_info['start']
-                chord_end = chord_info['end']
-                chord_key = (chord_idx, chord_info['chord'])
                 
-                # Check if chord overlaps with this word
-                if (word_start <= chord_start < word_end) or (chord_start <= word_start < chord_end):
-                    # Only insert each chord once (at the first word it overlaps)
-                    if chord_key not in inserted_chords:
-                        # Calculate exact character position based on timing
-                        if chord_start >= word_start:
-                            # Chord starts during this word
-                            time_offset = chord_start - word_start
-                        else:
-                            # Word starts during this chord (chord started before)
-                            time_offset = 0
-                        
-                        # Proportion of the word duration (0.0 to 1.0)
-                        proportion = time_offset / word_duration
-                        # Convert proportion to character index
-                        char_index = int(len(word) * proportion)
-                        # Clamp between 0 and len(word)
-                        char_index = max(0, min(char_index, len(word)))
-                        word_chords.append((char_index, chord_info['chord']))
-                        inserted_chords.add(chord_key)
+                # If chord starts before the end of this word, place it with this word
+                if chord_start <= word_end:
+                    # Only place chord if it's reasonably close to word start (within 0.5 seconds)
+                    if abs(chord_start - word_start) <= 0.5:
+                        chord_to_place = chord_info['chord']
+                    chord_index += 1
+                    break
+                else:
+                    # Chord is too far in the future, stop looking
+                    break
             
-            # Sort chords by character position (reverse for right-to-left insertion)
-            word_chords.sort(reverse=True)
-            
-            # Insert chords into the word from right to left
-            modified_word = word
-            for char_index, chord in word_chords:
-                modified_word = modified_word[:char_index] + '{' + chord + '}' + modified_word[char_index:]
+            # Create the word with chord if found
+            if chord_to_place:
+                modified_word = '{' + chord_to_place + '}' + word
+                has_chord = True
+            else:
+                modified_word = word
+                has_chord = False
             
             synced_result.append({
                 'word': modified_word,
                 'start': word_start,
                 'end': word_end,
-                'has_chord': len(word_chords) > 0
+                'has_chord': has_chord
             })
         
         if verbose:

@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import os
 from main import process_audio_with_music_ai
-from chrodsSync import sync_lyrics_with_chords, load_json_files
+from chordsSync import sync_lyrics_with_chords, load_json_files
 from display import display_synced_lyrics
 from slice_audio import extract_chord_segments
 from utils import get_instruments, mix_audio_files
@@ -44,16 +44,32 @@ col1, col2 = st.columns(2)
 with col1:
     uploaded_file = st.file_uploader("Choose an audio file", type=["mp3", "wav", "m4a"])
     
+    # Check if a new file was uploaded by comparing file names and sizes
     if uploaded_file is not None:
-        st.success("✅ File uploaded successfully!")
-        st.audio(uploaded_file, format="audio/mp3")
+        current_file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        previous_file_id = st.session_state.get("current_file_id", None)
         
-        # Save to session state
-        if "audio_data" not in st.session_state:
+        # If this is a new file (different name or size), update everything
+        if current_file_id != previous_file_id:
+            st.success("✅ File uploaded successfully!")
             st.session_state.audio_data = uploaded_file
+            st.session_state.current_file_id = current_file_id
+            
+            # Clear previous processing state when new file is uploaded
+            if "process_completed" in st.session_state:
+                del st.session_state.process_completed
+            if "results_folder" in st.session_state:
+                del st.session_state.results_folder
         
-        # Show file info
-        #st.info(f"File size: {uploaded_file.size / 1024 / 1024:.2f} MB")
+        # Always show audio player when file is uploaded
+        st.audio(uploaded_file, format="audio/mp3")
+        #st.info(f"📁 {uploaded_file.name} ({uploaded_file.size / 1024 / 1024:.2f} MB)")
+    else:
+        # Clear session state when no file is uploaded
+        if "audio_data" in st.session_state:
+            del st.session_state.audio_data
+        if "current_file_id" in st.session_state:
+            del st.session_state.current_file_id
 
 st.divider()
 st.header("⚙️ Process Audio")
@@ -64,47 +80,80 @@ with col1:
     if "audio_data" in st.session_state and st.session_state.audio_data:
         if st.button("🚀 Process with Music.AI", key="process_music_ai"):
             try:
-                # Save uploaded file temporarily
-                temp_file_path = "temp_upload.mp3"
-                with open(temp_file_path, "wb") as f:
-                    f.write(st.session_state.audio_data.getbuffer())
-                print(f"Saved uploaded file to {temp_file_path}")
+                # Create temp directory if it doesn't exist
+                os.makedirs("temp", exist_ok=True)
                 
-                # Use imported function from main.py
-                with st.spinner("Processing audio with Music.AI..."):
-                    result = process_audio_with_music_ai(
-                        api_key=API_KEY,
-                        workflow_name=WORKFLOW_NAME,
-                        mp3_file_path=temp_file_path,
-                        output_dir="results/api",  # API results go to results/api
-                        verbose=True
-                    )
-                    print(f"Music.AI processing result: {result}")
-                
-                if result["success"]:
-                    st.success("✅ Job completed successfully!")
-                    # Set the results folder for the unified workflow
-                    st.session_state.results_folder = "results/api"
-                    st.session_state.process_completed = True
-
-                    # Clean up
+                # Save uploaded file temporarily with proper extension
+                uploaded_file = st.session_state.audio_data
+                file_extension = uploaded_file.name.split('.')[-1].lower() if uploaded_file.name else 'mp3'
+                temp_file_path = f"temp/temp_upload.{file_extension}"
+                # Remove previous temp file if it exists to avoid conflicts
+                if os.path.exists(temp_file_path):
                     os.remove(temp_file_path)
+                
+                with open(temp_file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                # Verify file was created and has content
+                if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+                    st.error("Failed to save uploaded file properly")
                 else:
-                    st.error(f"Job failed: {result.get('message', 'Unknown error')}")
-                    st.session_state.show_backup_upload = True
+                    print(f"Saved uploaded file to {temp_file_path} ({os.path.getsize(temp_file_path)} bytes)")
+                    
+                    # Use imported function from main.py
+                    with st.spinner("Processing audio with Music.AI..."):
+                        result = process_audio_with_music_ai(
+                            api_key=API_KEY,
+                            workflow_name=WORKFLOW_NAME,
+                            mp3_file_path=temp_file_path,
+                            output_dir="results/api",  # API results go to results/api
+                            verbose=True
+                        )
+                        print(f"Music.AI processing result: {result}")
+                    
+                    if result["success"]:
+                        st.success("✅ Job completed successfully!")
+                        # Set the results folder for the unified workflow
+                        st.session_state.results_folder = "results/api"
+                        st.session_state.process_completed = True
+
+                        # Clean up temp file
+                        if os.path.exists(temp_file_path):
+                            os.remove(temp_file_path)
+                            print(f"Cleaned up temp file: {temp_file_path}")
+                    else:
+                        st.error(f"Job failed: {result.get('message', 'Unknown error')}")
+                        st.session_state.show_backup_upload = True
             
             except Exception as e:
                 st.error(f"Error processing with Music.AI: {str(e)}")
+                # Clean up temp file in case of error
+                temp_file_path = f"temp/temp_upload.{st.session_state.audio_data.name.split('.')[-1] if st.session_state.audio_data.name else 'mp3'}"
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
                 st.session_state.show_backup_upload = True
     else:
         st.info("👈 Please upload an audio file first")
 
 with col2:
-    if st.button("🧪 Load Demo", key="load_demo"):
-        # Set the results folder for the unified workflow
-        st.session_state.results_folder = "results/demo"
-        st.session_state.process_completed = True
-        st.success("✅ Demo loaded successfully!")
+    col2_1, col2_2 = st.columns(2)
+    
+    with col2_1:
+        if st.button("🧪 Load Demo", key="load_demo"):
+            # Set the results folder for the unified workflow
+            st.session_state.results_folder = "results/demo"
+            st.session_state.process_completed = True
+            st.success("✅ Demo loaded successfully!")
+    
+    with col2_2:
+        if st.button("📂 Load API Results", key="load_api_results"):
+            # Check if API results exist
+            if os.path.exists("results/api") and os.path.exists("results/api/lyrics.json"):
+                st.session_state.results_folder = "results/api"
+                st.session_state.process_completed = True
+                st.success("✅ API results loaded successfully!")
+            else:
+                st.error("No API results found. Process a file first or check results/api folder.")
 
 # Show backup file upload only if processing failed
 if st.session_state.get("show_backup_upload", False):

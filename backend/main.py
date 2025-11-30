@@ -43,9 +43,9 @@ def process_audio_with_music_ai(api_key, workflow_name, mp3_file_path, output_di
         if verbose:
             print(f"\nStep 3: Creating job...")
         job_result = music_ai.add_job(
-            "Criatividade Computacional - Music Generation",
+            "Computação Musical",
             workflow_name,
-            {"InputAudio": song_url},
+            {"inputAudio": song_url},
         )
         job_id = job_result["id"]
         if verbose:

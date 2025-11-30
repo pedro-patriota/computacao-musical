@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_KEY = os.getenv("API_KEY", "")
-WORKFLOW_NAME = "computacao-musical-rosa"
-OUTPUT_DIR = "results"
+WORKFLOW_NAME = "play-along-workflow"
+OUTPUT_DIR = "results/api"
 DEMO_DIR = "demo"
 
 if not API_KEY:
