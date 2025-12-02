@@ -242,11 +242,11 @@ if st.session_state.get("process_completed", False):
             col1, col2, col3 = st.columns([1, 1, 2])
             
             with col1:
-                tempo = st.slider("Tempo", 0.5, 2.0, 1.0, 0.1, label_visibility="collapsed")
+                tempo = st.slider("Tempo", 0.5, 2.0, 1.0, 0.1, label_visibility="collapsed", key="tempo_slider")
                 st.caption("🎚️ Tempo")
             
             with col2:
-                reverb = st.slider("Reverb", 0.0, 1.0, 0.0, 0.1, label_visibility="collapsed")
+                reverb = st.slider("Reverb", 0.0, 1.0, 0.0, 0.1, label_visibility="collapsed", key="reverb_slider")
                 st.caption("🔊 Reverb")
             
             with col3:
