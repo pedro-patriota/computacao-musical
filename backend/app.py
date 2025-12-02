@@ -238,6 +238,20 @@ if st.session_state.get("process_completed", False):
                     active_tracks.append(files['audio'])
                     active_track_names.append(inst.title())
             
+            # === AUDIO EFFECTS CONTROLS ===
+            col1, col2, col3 = st.columns([1, 1, 2])
+            
+            with col1:
+                tempo = st.slider("Tempo", 0.5, 2.0, 1.0, 0.1, label_visibility="collapsed")
+                st.caption("🎚️ Tempo")
+            
+            with col2:
+                reverb = st.slider("Reverb", 0.0, 1.0, 0.0, 0.1, label_visibility="collapsed")
+                st.caption("🔊 Reverb")
+            
+            with col3:
+                st.write("")  # spacing
+            
             if active_tracks:
                 st.write(f"**Playing:** {' + '.join(active_track_names)}")
                 st.write(f"**Muted for play-along:** {current_muted.title()}")
@@ -250,7 +264,14 @@ if st.session_state.get("process_completed", False):
                     try:
                         mixed_path = mix_audio_files(active_tracks, mixed_file_path)
                         if mixed_path and os.path.exists(mixed_path):
-                            st.audio(mixed_path, format="audio/wav")
+                            # Apply effects if not at default values
+                            if tempo != 1.0 or reverb != 0.0:
+                                from audio_processor import AudioProcessor
+                                processor = AudioProcessor(mixed_path)
+                                processed_audio = processor.process(tempo=tempo, reverb=reverb)
+                                st.audio(processed_audio, sample_rate=processor.sr, format="audio/wav")
+                            else:
+                                st.audio(mixed_path, format="audio/wav")
                         else:
                             st.error("Failed to mix audio tracks")
                     except Exception as e:
