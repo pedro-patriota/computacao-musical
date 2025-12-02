@@ -44,20 +44,28 @@ class AudioProcessor:
         if room_scale == 0.0:
             return self.audio
         
-        # Create a simple impulse response
-        impulse_length = int(self.sr * room_scale)
+        # Create a longer impulse response for more noticeable reverb
+        impulse_length = int(self.sr * room_scale * 2)  # Longer tail
         impulse = np.zeros(impulse_length)
         impulse[0] = 1.0
         
-        # Add decaying reflections
+        # Add more decaying reflections for richer reverb
         for i in range(1, impulse_length):
-            impulse[i] = impulse[i-1] * 0.97 * (1 - room_scale)
+            # Slower decay = more reverb tail
+            decay_factor = 0.93 + (room_scale * 0.05)  # 0.93-0.98 depending on room_scale
+            impulse[i] = impulse[i-1] * decay_factor
+        
+        # Normalize impulse
+        impulse = impulse / np.max(np.abs(impulse))
         
         # Convolve with audio
         wet = signal.fftconvolve(self.audio, impulse, mode='same')
         
-        # Mix dry and wet signals
-        mix = (self.audio * (1 - room_scale * 0.5)) + (wet * (room_scale * 0.5))
+        # Mix dry and wet signals with higher wet level
+        dry_level = 1.0 - (room_scale * 0.7)  # Increased wet mix
+        wet_level = room_scale * 0.7
+        mix = (self.audio * dry_level) + (wet * wet_level)
+        
         return mix / np.max(np.abs(mix))  # Normalize
     
     def adjust_volume(self, gain_db):
