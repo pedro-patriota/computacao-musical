@@ -62,35 +62,29 @@ def create_stacked_multitrack_player(instruments, current_muted):
     if 'muted_instruments' not in st.session_state:
         st.session_state.muted_instruments = set()
     
-    # Top controls: Play/Pause, Master volume, and Instrument selector
-    top_c1, top_c2, top_c3 = st.columns([1, 2, 2])
-    with top_c1:
-        st.button("▶️ / ⏸️", key="master_play_pause", use_container_width=True)
-    with top_c2:
-        master_volume = st.slider("Master", 0, 100, 100, key="master_volume")
-    with top_c3:
-        instrument_options = list(instruments.keys()) + ["Custom"]
-        
-        # Determine selectbox index based on muted instruments
-        if len(st.session_state.muted_instruments) == 1:
-            muted_inst = list(st.session_state.muted_instruments)[0]
-            if muted_inst in instrument_options:
-                default_index = instrument_options.index(muted_inst)
-            else:
-                default_index = len(instrument_options) - 1
+    # Top controls: just the Instrument selector
+    instrument_options = list(instruments.keys()) + ["Custom"]
+    
+    # Determine selectbox index based on muted instruments
+    if len(st.session_state.muted_instruments) == 1:
+        muted_inst = list(st.session_state.muted_instruments)[0]
+        if muted_inst in instrument_options:
+            default_index = instrument_options.index(muted_inst)
         else:
-            default_index = len(instrument_options) - 1  # "Custom"
-        
-        selected_instrument = st.selectbox(
-            "🎸 Play Along (mute):", 
-            instrument_options, 
-            index=default_index,
-            key="play_along_instrument"
-        )
-        
-        # Update muted_instruments based on selectbox selection
-        if selected_instrument != "Custom":
-            st.session_state.muted_instruments = {selected_instrument}
+            default_index = len(instrument_options) - 1
+    else:
+        default_index = len(instrument_options) - 1  # "Custom"
+    
+    selected_instrument = st.selectbox(
+        "🎸 Play Along (mute):", 
+        instrument_options, 
+        index=default_index,
+        key="play_along_instrument"
+    )
+    
+    # Update muted_instruments based on selectbox selection
+    if selected_instrument != "Custom":
+        st.session_state.muted_instruments = {selected_instrument}
 
     track_colors = {
         'drums': '#ff4444',
@@ -131,7 +125,7 @@ def create_stacked_multitrack_player(instruments, current_muted):
         with c3:
             vol = st.slider("", 0, 100, 100, key=f"vol_{inst_name}", 
                            label_visibility="collapsed")
-            per_track_volume = (vol / 100.0) * (master_volume / 100.0)
+            per_track_volume = vol / 100.0
 
         with c4:
             render_waveform(files['audio'], color, inst_name)
@@ -285,10 +279,34 @@ if st.session_state.get("process_completed", False):
         chords_files = [os.path.join(results_folder, f) for f in files if f.endswith("_chords.json")]
         stem_files = [os.path.join(results_folder, f) for f in files if f.endswith(".wav")]
         
+        # Load lyrics and chords if not already loaded
+        if "synced_data" not in st.session_state:
+            lyrics_path = os.path.join(results_folder, "lyrics.json")
+            chords_path = os.path.join(results_folder, "chords.json")
+            
+            if os.path.exists(lyrics_path) and os.path.exists(chords_path):
+                try:
+                    lyrics_data, chords_data = load_json_files(lyrics_path, chords_path)
+                    synced_result = sync_lyrics_with_chords(lyrics_data, chords_data, verbose=False)
+                    if synced_result:
+                        st.session_state.synced_data = synced_result
+                except Exception as e:
+                    st.warning(f"Could not load lyrics/chords: {e}")
+        
         instruments = get_instruments(chords_files=chords_files, stem_files=stem_files)
         
         if instruments:
+            # Display Lyrics and Chords FIRST
+            st.subheader("📝 Lyrics & Chords")
+            if st.session_state.get("synced_data"):
+                display_synced_lyrics(st.session_state.synced_data)
+            else:
+                st.info("No synced lyrics and chords available.")
+            
+            st.divider()
+            
             # Stacked multi-track mixer UI
+            st.subheader("🎚️ Multi-Track Mixer")
             track_states = create_stacked_multitrack_player(
                 instruments, 
                 st.session_state.get("current_muted", list(instruments.keys())[0])
