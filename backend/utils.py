@@ -56,51 +56,43 @@ def get_instruments(chords_files, stem_files):
 
     return instruments
 
-def mix_audio_files(audio_files, output_path):
+def mix_audio_files(audio_files, output_file, volumes=None):
     """
-    Mix multiple audio files into a single output file.
+    Mix multiple audio files into one, with optional volume control for each track.
+    
+    Args:
+        audio_files: List of audio file paths to mix
+        output_file: Path to save the mixed audio
+        volumes: Optional list of volume multipliers (0.0-1.0) for each track
     """
-    import soundfile as sf
-    import numpy as np
+    from pydub import AudioSegment
     
     if not audio_files:
         return None
     
-    # Load first audio file to get properties
-    mixed_audio, sample_rate = sf.read(audio_files[0])
+    # If volumes not provided, use full volume for all tracks
+    if volumes is None:
+        volumes = [1.0] * len(audio_files)
     
-    # Mix in other audio files
-    for audio_file in audio_files[1:]:
-        try:
-            audio_data, sr = sf.read(audio_file)
-            if sr != sample_rate:
-                print(f"Warning: Sample rate mismatch in {audio_file}")
-                continue
-            
-            # Handle different lengths by padding with zeros
-            if len(audio_data) > len(mixed_audio):
-                # Pad mixed_audio to match longer file
-                if mixed_audio.ndim == 1:
-                    mixed_audio = np.pad(mixed_audio, (0, len(audio_data) - len(mixed_audio)))
-                else:
-                    mixed_audio = np.pad(mixed_audio, ((0, len(audio_data) - len(mixed_audio)), (0, 0)))
-            elif len(audio_data) < len(mixed_audio):
-                # Pad audio_data to match mixed_audio
-                if audio_data.ndim == 1:
-                    audio_data = np.pad(audio_data, (0, len(mixed_audio) - len(audio_data)))
-                else:
-                    audio_data = np.pad(audio_data, ((0, len(mixed_audio) - len(audio_data)), (0, 0)))
-            
-            # Add audio data to mix
-            mixed_audio = mixed_audio + audio_data
-        except Exception as e:
-            print(f"Error processing {audio_file}: {e}")
-            continue
+    # Load first audio file as base
+    mixed = AudioSegment.from_file(audio_files[0])
     
-    # Normalize to prevent clipping
-    if mixed_audio.max() > 1.0 or mixed_audio.min() < -1.0:
-        mixed_audio = mixed_audio / np.max(np.abs(mixed_audio))
+    # Apply volume to first track
+    if volumes[0] != 1.0:
+        mixed = mixed + (20 * (volumes[0] - 1.0))  # Convert 0-1 to dB
     
-    # Save mixed audio
-    sf.write(output_path, mixed_audio, sample_rate)
-    return output_path
+    # Overlay remaining tracks
+    for i, audio_file in enumerate(audio_files[1:], start=1):
+        audio = AudioSegment.from_file(audio_file)
+        
+        # Apply volume adjustment (convert 0-1 range to dB)
+        if volumes[i] != 1.0:
+            # -20dB to +20dB range based on 0-1 input
+            db_change = 20 * (volumes[i] - 1.0)
+            audio = audio + db_change
+        
+        mixed = mixed.overlay(audio)
+    
+    # Export mixed audio
+    mixed.export(output_file, format="wav")
+    return output_file

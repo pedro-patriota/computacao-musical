@@ -18,28 +18,23 @@ st.set_page_config(
 
 st.title("🎵 Play Along Generator")
 
-def create_waveform_player(audio_file):
-    """Create an interactive waveform player using streamlit_advanced_audio."""
+def create_waveform_player_from_path(audio_path):
+    """Create an interactive waveform player from a file path."""
     try:
-        # Save temporarily
-        temp_dir = "temp"
-        os.makedirs(temp_dir, exist_ok=True)
+        if not os.path.exists(audio_path):
+            st.error(f"Audio file not found: {audio_path}")
+            return
         
-        # Get file extension
-        file_ext = audio_file.name.split('.')[-1].lower()
-        temp_audio_path = os.path.join(temp_dir, f"preview_audio.{file_ext}")
+        # Get file info
+        file_size = os.path.getsize(audio_path)
+        file_name = os.path.basename(audio_path)
         
-        # Write the audio file
-        with open(temp_audio_path, "wb") as f:
-            f.write(audio_file.getbuffer())
-        
-        # Show file info
-        st.info(f"📁 {audio_file.name} ({audio_file.size / 1024 / 1024:.2f} MB)")
+        st.info(f"📁 {file_name} ({file_size / 1024 / 1024:.2f} MB)")
         
         # Configure WaveSurfer options with custom styling
         options = WaveSurferOptions(
-            wave_color="#1DB954",           # Spotify green
-            progress_color="#1ed760",        # Lighter green
+            wave_color="#1DB954",
+            progress_color="#1ed760",
             cursor_color="#1DB954",
             height=120,
             bar_height=2,
@@ -49,56 +44,138 @@ def create_waveform_player(audio_file):
         )
         
         # Create the interactive player
-        result = audix(
-            temp_audio_path,
-            wavesurfer_options=options
+        audix(audio_path, wavesurfer_options=options)
+            
+    except Exception as e:
+        print(f"Error in create_waveform_player_from_path: {str(e)}")
+        st.warning(f"⚠️ Could not create waveform player: {str(e)}")
+        st.audio(audio_path)
+
+def create_waveform_player(audio_file):
+    """Create an interactive waveform player using streamlit_advanced_audio."""
+    try:
+        # Check if audio_file is a file path (string) or uploaded file object
+        if isinstance(audio_file, str):
+            # It's already a file path
+            create_waveform_player_from_path(audio_file)
+            return
+        
+        # It's an uploaded file object
+        temp_dir = "temp"
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        file_ext = audio_file.name.split('.')[-1].lower()
+        temp_audio_path = os.path.join(temp_dir, f"preview_audio.{file_ext}")
+        
+        with open(temp_audio_path, "wb") as f:
+            f.write(audio_file.getbuffer())
+        
+        st.info(f"📁 {audio_file.name} ({audio_file.size / 1024 / 1024:.2f} MB)")
+        
+        options = WaveSurferOptions(
+            wave_color="#1DB954",
+            progress_color="#1ed760",
+            cursor_color="#1DB954",
+            height=120,
+            bar_height=2,
+            bar_width=2,
+            bar_radius=2,
+            normalize=True
         )
         
-        # Display playback information if available
-        if result:
-            col1, col2 = st.columns(2)
-            with col1:
-                if result.get('currentTime') is not None:
-                    current_mins = int(result['currentTime'] // 60)
-                    current_secs = int(result['currentTime'] % 60)
-                    st.caption(f"⏱️ Current Time: {current_mins}:{current_secs:02d}")
-            
-            with col2:
-                if result.get('selectedRegion'):
-                    region = result['selectedRegion']
-                    st.caption(f"🎯 Selected: {region.get('start', 0):.1f}s - {region.get('end', 0):.1f}s")
-        
-        # Clean up temp file after a delay
-        try:
-            if os.path.exists(temp_audio_path):
-                os.remove(temp_audio_path)
-        except:
-            pass
+        audix(temp_audio_path, wavesurfer_options=options)
             
     except Exception as e:
         print(f"Error in create_waveform_player: {str(e)}")
         st.warning(f"⚠️ Could not create waveform player: {str(e)}")
-        # Fallback to native player
-        st.audio(audio_file, format=f"audio/{file_ext}" if '.' in audio_file.name else "audio/mp3")
+        if hasattr(audio_file, 'name'):
+            file_ext = audio_file.name.split('.')[-1] if '.' in audio_file.name else 'mp3'
+            st.audio(audio_file, format=f"audio/{file_ext}")
 
-def find_latest_json_files(output_dir):
-    """Find the latest generated JSON files in the output directory."""
-    lyrics_file = None
-    chords_file = None
+def create_stacked_multitrack_player(instruments, current_muted):
+    """Create a stacked multi-track player with waveforms like a DAW."""
+    st.subheader("🎚️ Multi-Track Studio")
     
-    if os.path.exists(output_dir):
-        files = os.listdir(output_dir)
-        for file in files:
-            if file.endswith(".json"):
-                file_path = os.path.join(output_dir, file)
-                if "lyrics" in file.lower():
-                    lyrics_file = file_path
-                elif "piano" in file.lower() or "chord" in file.lower():
-                    chords_file = file_path
+    # Color mapping for instruments
+    track_colors = {
+        'drums': ('#ff4444', '#ff6666'),      # Red
+        'bass': ('#4444ff', '#6666ff'),       # Blue
+        'guitar': ('#44ff44', '#66ff66'),     # Green
+        'vocals': ('#ff44ff', '#ff66ff'),     # Purple
+        'piano': ('#ffff44', '#ffff66'),      # Yellow
+        'other': ('#888888', '#aaaaaa')       # Gray
+    }
     
-    print(f"Found lyrics file: {lyrics_file}")
-    print(f"Found chords file: {chords_file}")
-    return lyrics_file, chords_file
+    track_states = {}
+    
+    # Playback controls at the top - simplified
+    control_col1, control_col2 = st.columns([1, 3])
+    
+    with control_col1:
+        play_pause = st.button("▶️ Play / ⏸️ Pause", key="master_play_pause", use_container_width=True)
+        if play_pause:
+            st.session_state.is_playing = not st.session_state.get('is_playing', False)
+    
+    with control_col2:
+        master_volume = st.slider("🔊 Master Volume", 0, 100, 100, key="master_volume")
+    
+    st.markdown("---")
+    
+    # Individual tracks stacked vertically
+    for inst_name, files in instruments.items():
+        # Get colors for this instrument
+        wave_color, progress_color = track_colors.get(inst_name, track_colors['other'])
+        
+        # Track container with custom styling
+        with st.container():
+            # Track header with controls - simplified
+            header_col1, header_col2, header_col3, header_col4 = st.columns([2, 0.5, 0.5, 2])
+            
+            with header_col1:
+                st.markdown(f"### {inst_name.upper()}")
+            
+            with header_col2:
+                is_muted = st.checkbox("M", value=(inst_name == current_muted), 
+                                      key=f"mute_{inst_name}", help="Mute")
+            
+            with header_col3:
+                is_solo = st.checkbox("S", value=False, 
+                                     key=f"solo_{inst_name}", help="Solo")
+            
+            with header_col4:
+                volume = st.slider(f"Vol", 0, 100, 100, 
+                                 key=f"vol_{inst_name}",
+                                 label_visibility="collapsed")
+            
+            # Waveform display for this track
+            if files['audio'] and os.path.exists(files['audio']):
+                options = WaveSurferOptions(
+                    wave_color=wave_color,
+                    progress_color=progress_color,
+                    cursor_color=progress_color,
+                    height=80,
+                    bar_height=1,
+                    bar_width=2,
+                    bar_radius=2,
+                    normalize=True
+                )
+                
+                try:
+                    audix(files['audio'], wavesurfer_options=options, key=f"wave_{inst_name}")
+                except Exception as e:
+                    st.caption(f"🎵 {os.path.basename(files['audio'])}")
+            else:
+                st.caption("⚠️ No audio file")
+            
+            track_states[inst_name] = {
+                'muted': is_muted,
+                'solo': is_solo,
+                'volume': (volume / 100.0) * (master_volume / 100.0)
+            }
+            
+            st.markdown("---")
+    
+    return track_states
 
 # Main Single Page Layout
 st.header("📤 Upload Audio File")
@@ -251,100 +328,55 @@ if st.session_state.get("show_backup_upload", False):
 # --- UNIFIED PLAY-ALONG WORKFLOW ---
 if st.session_state.get("process_completed", False):
     st.divider()
-    st.header("🎵 Play Along")
+    st.header("🎵 Play Along Studio")
     
     results_folder = st.session_state.results_folder
     
-    # Gather all stems and chord files from the selected folder
     if os.path.exists(results_folder):
         files = os.listdir(results_folder)
         chords_files = [os.path.join(results_folder, f) for f in files if f.endswith("_chords.json")]
         stem_files = [os.path.join(results_folder, f) for f in files if f.endswith(".wav")]
-        lyrics_file = os.path.join(results_folder, "lyrics.json")
         
-        # Load all available instruments and their files
         instruments = get_instruments(chords_files=chords_files, stem_files=stem_files)
         
-        instrument_options = list(instruments.keys())
-        if not instrument_options:
-            st.error(f"No instruments found in {results_folder} folder.")
-        else:
-            # Instrument selection
-            current_muted = st.selectbox(
-                "Select the instrument you want to play along with (muted):",
-                instrument_options,
-                index=0,
-                key="mute_select"
+        if instruments:
+            # Stacked multi-track mixer UI
+            track_states = create_stacked_multitrack_player(
+                instruments, 
+                st.session_state.get("current_muted", list(instruments.keys())[0])
             )
             
-            # Check if instrument changed to recalculate chords
-            if "current_muted" not in st.session_state or st.session_state.current_muted != current_muted or "current_folder" not in st.session_state or st.session_state.current_folder != results_folder:
-                st.session_state.current_muted = current_muted
-                st.session_state.current_folder = results_folder
-                
-                # Load lyrics and chords for the muted instrument
-                with open(lyrics_file, 'r') as f:
-                    lyrics_data = json.load(f)
-                chords_filepath = instruments[current_muted]['chords']
-                with open(chords_filepath, 'r') as f:
-                    chords_data = json.load(f)
-                
-                # Sync lyrics and chords
-                st.session_state.synced_data = sync_lyrics_with_chords(lyrics_data, chords_data, verbose=False)
-                st.session_state.chords_filepath = chords_filepath
-                st.session_state.stem_filepath = instruments[current_muted]['audio']
-            
-            # Get active tracks (all except muted)
+            # Determine which tracks to play based on mute/solo states
+            has_solo = any(state['solo'] for state in track_states.values())
             active_tracks = []
-            active_track_names = []
-            for inst, files in instruments.items():
-                if inst != current_muted and files['audio']:
-                    active_tracks.append(files['audio'])
-                    active_track_names.append(inst.title())
             
-            # Check if all other instruments have only "N" chords
-            all_other_are_silent = True
-            for inst, files in instruments.items():
-                if inst != current_muted and files['chords']:
-                    try:
-                        with open(files['chords'], 'r') as f:
-                            chords_data = json.load(f)
-                            # Check if there's at least one chord that's not "N"
-                            valid_chords = [chord for chord in chords_data if chord.get("chord_majmin") != "N"]
-                            if valid_chords:
-                                all_other_are_silent = False
-                                break
-                    except (json.JSONDecodeError, IOError):
-                        continue
+            for inst_name, state in track_states.items():
+                audio_file = instruments[inst_name]['audio']
+                if audio_file and os.path.exists(audio_file):
+                    if has_solo:
+                        if state['solo']:
+                            active_tracks.append((audio_file, state['volume']))
+                    else:
+                        if not state['muted']:
+                            active_tracks.append((audio_file, state['volume']))
             
-            if all_other_are_silent:
-                st.error("❌ Cannot extract audio: All other instruments have no valid chord data (only silence/N). The audio processing may have failed for these tracks.")
-            elif active_tracks:
-                st.write(f"**Playing:** {' + '.join(active_track_names)}")
-                st.write(f"**Muted for play-along:** {current_muted.title()}")
+            # Mix and play
+            if active_tracks:
+                mixed_file_path = os.path.join(results_folder, "studio_mix.wav")
                 
-                # Use a single reusable mixed file (overwrite each time)
-                mixed_file_path = os.path.join(results_folder, "mixed_playback.wav")
-                
-                # Always regenerate the mixed file for the current selection
-                with st.spinner("Mixing audio tracks..."):
+                with st.spinner("🎛️ Mixing tracks..."):
                     try:
-                        mixed_path = mix_audio_files(active_tracks, mixed_file_path)
+                        audio_files = [track[0] for track in active_tracks]
+                        volumes = [track[1] for track in active_tracks]
+                        
+                        mixed_path = mix_audio_files(audio_files, mixed_file_path, volumes=volumes)
+                        
                         if mixed_path and os.path.exists(mixed_path):
-                            st.audio(mixed_path, format="audio/wav")
-                        else:
-                            st.error("Failed to mix audio tracks")
+                            st.success("✅ Mix ready!")
+                            st.audio(mixed_path)
                     except Exception as e:
-                        st.error(f"Error mixing audio: {e}")
-            
-            # Show chords for the muted instrument
-            if "synced_data" in st.session_state:
-                st.subheader(f"🎼 Chord Guide")
-                stem_filepath = st.session_state.stem_filepath
-                chords_filepath = st.session_state.chords_filepath
-                synced_data = st.session_state.synced_data
-                
-                sliced_chords, sr = extract_chord_segments(stem_filepath, chords_filepath) if stem_filepath else (None, None)
-                display_synced_lyrics(synced_data, sliced_chords, sr)
+                        st.error(f"❌ Error mixing audio: {e}")
+        else:
+            st.warning("No instruments found with valid chord data.")
     else:
-        st.error(f"Results folder {results_folder} not found.")
+        st.error(f"Results folder not found: {results_folder}")
