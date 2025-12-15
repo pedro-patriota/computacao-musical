@@ -278,65 +278,101 @@ if st.session_state.get("process_completed", False):
         files = os.listdir(results_folder)
         chords_files = [os.path.join(results_folder, f) for f in files if f.endswith("_chords.json")]
         stem_files = [os.path.join(results_folder, f) for f in files if f.endswith(".wav")]
+        lyrics_path = os.path.join(results_folder, "lyrics.json")
         
-        # Load lyrics and chords if not already loaded
-        if "synced_data" not in st.session_state:
-            lyrics_path = os.path.join(results_folder, "lyrics.json")
-            chords_path = os.path.join(results_folder, "chords.json")
-            
-            if os.path.exists(lyrics_path) and os.path.exists(chords_path):
-                try:
-                    lyrics_data, chords_data = load_json_files(lyrics_path, chords_path)
-                    synced_result = sync_lyrics_with_chords(lyrics_data, chords_data, verbose=False)
-                    if synced_result:
-                        st.session_state.synced_data = synced_result
-                except Exception as e:
-                    st.warning(f"Could not load lyrics/chords: {e}")
-        
+        # 1. GENERATE INSTRUMENTS LIST FIRST
         instruments = get_instruments(chords_files=chords_files, stem_files=stem_files)
         
         if instruments:
-            # Display Lyrics and Chords FIRST
-            st.subheader("📝 Lyrics & Chords")
+            # 2. DETERMINE WHICH INSTRUMENT TO USE FOR CHORDS
+            # We default to the first available instrument, or use the one currently selected/muted
+            if 'play_along_instrument' in st.session_state:
+                target_inst = st.session_state.play_along_instrument
+            else:
+                target_inst = list(instruments.keys())[0]
+
+            # Handle "Custom" selection case by falling back to the first instrument for chords
+            if target_inst == "Custom" or target_inst not in instruments:
+                target_inst = list(instruments.keys())[0]
+
+            # 3. LOAD AND SYNC DATA
+            # Only do this if we haven't synced yet or if the instrument changed
+            if "synced_data" not in st.session_state or st.session_state.get("current_chord_inst") != target_inst:
+                
+                chords_path = instruments[target_inst]['chords'] # Use specific instrument chords
+                
+                if os.path.exists(lyrics_path) and os.path.exists(chords_path):
+                    try:
+                        lyrics_data, chords_data = load_json_files(lyrics_path, chords_path)
+                        synced_result = sync_lyrics_with_chords(lyrics_data, chords_data, verbose=False)
+                        
+                        if synced_result:
+                            st.session_state.synced_data = synced_result
+                            st.session_state.current_chord_inst = target_inst
+                            st.session_state.chords_filepath = chords_path
+                            st.session_state.stem_filepath = instruments[target_inst]['audio']
+                    except Exception as e:
+                        st.warning(f"Could not load lyrics/chords: {e}")
+
+            # 4. DISPLAY LYRICS & CHORDS
+            st.subheader(f"📝 Lyrics & Chords ({target_inst.title()})")
             if st.session_state.get("synced_data"):
-                display_synced_lyrics(st.session_state.synced_data)
+                # Retrieve paths for slicing logic
+                stem_filepath = st.session_state.get("stem_filepath")
+                chords_filepath = st.session_state.get("chords_filepath")
+                
+                # Extract segments for visualization (re-adding logic from original app)
+                if stem_filepath and chords_filepath:
+                    sliced_chords, sr = extract_chord_segments(stem_filepath, chords_filepath)
+                else:
+                    sliced_chords, sr = None, None
+
+                # Display with all arguments required by your display function
+                display_synced_lyrics(st.session_state.synced_data, sliced_chords, sr)
             else:
                 st.info("No synced lyrics and chords available.")
             
             st.divider()
             
-            # Stacked multi-track mixer UI
+            # 5. MULTI-TRACK MIXER
             st.subheader("🎚️ Multi-Track Mixer")
+            
+            # Helper to get the current muted instrument for the dropdown default
+            current_muted_default = target_inst if target_inst in instruments else list(instruments.keys())[0]
+            
             track_states = create_stacked_multitrack_player(
                 instruments, 
-                st.session_state.get("current_muted", list(instruments.keys())[0])
+                current_muted_default
             )
             
             # Determine which tracks to play
             active_tracks = []
             
             for inst_name, state in track_states.items():
-                audio_file = instruments[inst_name]['audio']
-                if audio_file and os.path.exists(audio_file):
-                    if not state['muted']:
-                        active_tracks.append((audio_file, state['volume']))
+                if inst_name in instruments: # Safety check
+                    audio_file = instruments[inst_name]['audio']
+                    if audio_file and os.path.exists(audio_file):
+                        if not state['muted']:
+                            active_tracks.append((audio_file, state['volume']))
             
             # Mix and play
             if active_tracks:
                 mixed_file_path = os.path.join(results_folder, "studio_mix.wav")
                 
-                with st.spinner("🎛️ Mixing tracks..."):
-                    try:
-                        audio_files = [track[0] for track in active_tracks]
-                        volumes = [track[1] for track in active_tracks]
-                        
-                        mixed_path = mix_audio_files(audio_files, mixed_file_path, volumes=volumes)
-                        
-                        if mixed_path and os.path.exists(mixed_path):
-                            st.success("✅ Mix ready!")
-                            st.audio(mixed_path)
-                    except Exception as e:
-                        st.error(f"❌ Error mixing audio: {e}")
+                # Only remix if volumes changed or tracks changed (optimization)
+                # For now, we mix every run to ensure responsiveness
+                try:
+                    audio_files = [track[0] for track in active_tracks]
+                    volumes = [track[1] for track in active_tracks]
+                    
+                    # Ensure mix_audio_files supports volumes list, otherwise remove that arg
+                    # Assuming updated utils.py based on your code usage:
+                    mixed_path = mix_audio_files(audio_files, mixed_file_path, volumes=volumes)
+                    
+                    if mixed_path and os.path.exists(mixed_path):
+                        st.audio(mixed_path, format="audio/wav")
+                except Exception as e:
+                    st.error(f"❌ Error mixing audio: {e}")
             else:
                 st.warning("⚠️ Select at least one track to play")
         else:
