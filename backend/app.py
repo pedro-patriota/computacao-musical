@@ -200,24 +200,11 @@ with col1:
         st.info("👈 Please upload an audio file first")
 
 with col2:
-    col2_1, col2_2 = st.columns(2)
-    
-    with col2_1:
-        if st.button("🧪 Load Demo", key="load_demo"):
-            # Set the results folder for the unified workflow
-            st.session_state.results_folder = "results/demo"
-            st.session_state.process_completed = True
-            st.success("✅ Demo loaded successfully!")
-    
-    with col2_2:
-        if st.button("📂 Load API Results", key="load_api_results"):
-            # Check if API results exist
-            if os.path.exists("results/api") and os.path.exists("results/api/lyrics.json"):
-                st.session_state.results_folder = "results/api"
-                st.session_state.process_completed = True
-                st.success("✅ API results loaded successfully!")
-            else:
-                st.error("No API results found. Process a file first or check results/api folder.")
+    if st.button("🧪 Load Demo", key="load_demo"):
+        # Set the results folder for the unified workflow
+        st.session_state.results_folder = "results/demo"
+        st.session_state.process_completed = True
+        st.success("✅ Demo loaded successfully!")
 
 # Show backup file upload only if processing failed
 if st.session_state.get("show_backup_upload", False):
