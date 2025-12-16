@@ -9,6 +9,12 @@ from slice_audio import extract_chord_segments
 from utils import get_instruments, mix_audio_files
 from constants import *
 
+# Get the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+DEMO_DIR = os.path.join(RESULTS_DIR, "demo")
+API_DIR = os.path.join(RESULTS_DIR, "api")
+
 # Set page config
 st.set_page_config(
     page_title="Play Along",
@@ -170,7 +176,7 @@ with col1:
                             api_key=API_KEY,
                             workflow_name=WORKFLOW_NAME,
                             mp3_file_path=temp_file_path,
-                            output_dir="results/api",  # API results go to results/api
+                            output_dir=API_DIR,  # API results go to results/api
                             verbose=True
                         )
                         print(f"Music.AI processing result: {result}")
@@ -178,7 +184,7 @@ with col1:
                     if result["success"]:
                         st.success("✅ Job completed successfully!")
                         # Set the results folder for the unified workflow
-                        st.session_state.results_folder = "results/api"
+                        st.session_state.results_folder = API_DIR
                         st.session_state.process_completed = True
 
                         # Clean up temp file
@@ -201,10 +207,14 @@ with col1:
 
 with col2:
     if st.button("🧪 Load Demo", key="load_demo"):
-        # Set the results folder for the unified workflow
-        st.session_state.results_folder = "results/demo"
-        st.session_state.process_completed = True
-        st.success("✅ Demo loaded successfully!")
+        # Check if demo folder exists
+        if os.path.exists(DEMO_DIR) and os.path.exists(os.path.join(DEMO_DIR, "lyrics.json")):
+            # Set the results folder for the unified workflow
+            st.session_state.results_folder = DEMO_DIR
+            st.session_state.process_completed = True
+            st.success("✅ Demo loaded successfully!")
+        else:
+            st.error("Demo files not found. Demo functionality is not available in this deployment.")
 
 # Show backup file upload only if processing failed
 if st.session_state.get("show_backup_upload", False):
