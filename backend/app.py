@@ -33,9 +33,6 @@ def create_waveform_player(audio_file):
         with open(temp_audio_path, "wb") as f:
             f.write(audio_file.getbuffer())
         
-        # Show file info
-        st.info(f"📁 {audio_file.name} ({audio_file.size / 1024 / 1024:.2f} MB)")
-        
         # Configure WaveSurfer options with custom styling
         options = WaveSurferOptions(
             wave_color="#1DB954",           # Spotify green
@@ -295,31 +292,32 @@ if st.session_state.get("process_completed", False):
                 st.session_state.stem_filepath = instruments[current_muted]['audio']
             
             # Get active tracks (all except muted)
+            # Always prioritize vocals, then add other instruments
             active_tracks = []
             active_track_names = []
+            vocals_audio = None
+            vocals_name = None
+            
+            # First, check for vocals and keep it aside
+            for inst, files in instruments.items():
+                if inst.lower() == 'vocals' and files['audio']:
+                    vocals_audio = files['audio']
+                    vocals_name = inst.title()
+                    break
+            
+            # Add all active tracks except muted
             for inst, files in instruments.items():
                 if inst != current_muted and files['audio']:
                     active_tracks.append(files['audio'])
                     active_track_names.append(inst.title())
             
-            # Check if all other instruments have only "N" chords
-            all_other_are_silent = True
-            for inst, files in instruments.items():
-                if inst != current_muted and files['chords']:
-                    try:
-                        with open(files['chords'], 'r') as f:
-                            chords_data = json.load(f)
-                            # Check if there's at least one chord that's not "N"
-                            valid_chords = [chord for chord in chords_data if chord.get("chord_majmin") != "N"]
-                            if valid_chords:
-                                all_other_are_silent = False
-                                break
-                    except (json.JSONDecodeError, IOError):
-                        continue
+            # Ensure vocals is always included if available and not muted
+            if vocals_audio and current_muted.lower() != 'vocals' and vocals_audio not in active_tracks:
+                active_tracks.insert(0, vocals_audio)
+                if vocals_name not in active_track_names:
+                    active_track_names.insert(0, vocals_name)
             
-            if all_other_are_silent:
-                st.error("❌ Cannot extract audio: All other instruments have no valid chord data (only silence/N). The audio processing may have failed for these tracks.")
-            elif active_tracks:
+            if active_tracks:
                 st.write(f"**Playing:** {' + '.join(active_track_names)}")
                 st.write(f"**Muted for play-along:** {current_muted.title()}")
                 
