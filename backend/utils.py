@@ -15,34 +15,64 @@ def get_instruments(chords_files, stem_files):
     """
     instruments = {}
 
-    # 1. Find all valid chords files (must have > 1 chord event)
+    # 1. Find all valid chords files (vocals always included, others need > 1 event OR are the only instrument)
     for file_path in chords_files:
         if not os.path.exists(file_path):
             continue
         try:
             with open(file_path, 'r') as f:
                 chords_data = json.load(f)
-                if isinstance(chords_data, list) and len(chords_data) > 1:
+                if isinstance(chords_data, list):
                     filename_lower = file_path.lower()
-                    if "guitar" in filename_lower:
-                        inst = "guitar"
-                    elif "piano" in filename_lower:
-                        inst = "piano"
-                    elif "vocals" in filename_lower:
-                        inst = "vocals"
-                    elif "bass" in filename_lower:
-                        inst = "bass"
-                    elif "drums" in filename_lower:
-                        inst = "drums"
-                    else:
-                        # Try to extract instrument from filename
-                        inst = os.path.splitext(os.path.basename(file_path))[0]
-                    instruments[inst] = {'chords': file_path, 'audio': None}
+                    is_vocals = "vocals" in filename_lower
+                    
+                    # Include vocals regardless of chord count, others need > 1 event
+                    if is_vocals or len(chords_data) > 1:
+                        if "guitar" in filename_lower:
+                            inst = "guitar"
+                        elif "piano" in filename_lower:
+                            inst = "piano"
+                        elif "vocals" in filename_lower:
+                            inst = "vocals"
+                        elif "bass" in filename_lower:
+                            inst = "bass"
+                        elif "drums" in filename_lower:
+                            inst = "drums"
+                        else:
+                            # Try to extract instrument from filename
+                            inst = os.path.splitext(os.path.basename(file_path))[0]
+                        instruments[inst] = {'chords': file_path, 'audio': None}
         except (json.JSONDecodeError, IOError):
             continue
 
+    # If no instruments found with > 1 event, accept any instrument with at least 1 event
     if not instruments:
-        print("Warning: No valid chord files found (with > 1 event).")
+        for file_path in chords_files:
+            if not os.path.exists(file_path):
+                continue
+            try:
+                with open(file_path, 'r') as f:
+                    chords_data = json.load(f)
+                    if isinstance(chords_data, list) and len(chords_data) > 0:
+                        filename_lower = file_path.lower()
+                        if "guitar" in filename_lower:
+                            inst = "guitar"
+                        elif "piano" in filename_lower:
+                            inst = "piano"
+                        elif "vocals" in filename_lower:
+                            inst = "vocals"
+                        elif "bass" in filename_lower:
+                            inst = "bass"
+                        elif "drums" in filename_lower:
+                            inst = "drums"
+                        else:
+                            inst = os.path.splitext(os.path.basename(file_path))[0]
+                        instruments[inst] = {'chords': file_path, 'audio': None}
+            except (json.JSONDecodeError, IOError):
+                continue
+
+    if not instruments:
+        print("Warning: No valid chord files found.")
         return {}
 
     # 2. Find the matching audio stem for each instrument

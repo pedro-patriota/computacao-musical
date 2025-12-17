@@ -5,7 +5,7 @@ import json
 import html as html_lib
 import streamlit.components.v1 as components
 
-def display_synced_lyrics(synced_data, sliced_chords, samplerate):
+def display_synced_lyrics(synced_data, sliced_chords, samplerate, show_chords=True):
     """
     Displays lyrics with interactive chord buttons that play real audio segments.
     
@@ -13,6 +13,7 @@ def display_synced_lyrics(synced_data, sliced_chords, samplerate):
         synced_data (list): The list of word objects with chords.
         sliced_chords (dict): The dictionary from extract_chord_segments.
         samplerate (int): The sample rate of the audio.
+        show_chords (bool): Whether to show chord buttons (default: True).
     """
     if not synced_data:
         return
@@ -72,12 +73,13 @@ def display_synced_lyrics(synced_data, sliced_chords, samplerate):
                 f'<span id="word-{i}" style="white-space: pre-wrap;">{html_lib.escape(word_text)}</span>'
             )
 
-            chord_buttons.append({
-                "index": i,
-                "chord": raw_chord_text, # Display name
-                "duration": duration,
-                "audioData": b64_audio # The actual sound
-            })
+            if show_chords:
+                chord_buttons.append({
+                    "index": i,
+                    "chord": raw_chord_text, # Display name
+                    "duration": duration,
+                    "audioData": b64_audio # The actual sound
+                })
         else:
             flowing_html.append(
                 f'<span style="white-space: pre-wrap;">{html_lib.escape(word)}</span>'
